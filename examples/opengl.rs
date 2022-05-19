@@ -17,7 +17,6 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 use glium::{
     glutin::{
-        dpi::LogicalSize,
         event::{Event, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
         window::WindowBuilder,
@@ -50,10 +49,11 @@ fn main() {
 
     let events_loop = EventLoop::<UserEvent>::with_user_event();
     let wb = WindowBuilder::new()
-        .with_inner_size(LogicalSize::new(1024.0, 768.0))
+        .with_resizable(true)
         .with_title("libmpv-rs OpenGL Example");
     let cb = ContextBuilder::new();
     let display = Display::new(wb, cb, &events_loop).unwrap();
+    let mut size = display.get_framebuffer_dimensions();
 
     let mut mpv = Mpv::new().expect("Error while creating MPV");
     let mut render_context = RenderContext::new(
@@ -89,6 +89,12 @@ fn main() {
             } => {
                 *control_flow = ControlFlow::Exit;
             }
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
+                size = display.get_framebuffer_dimensions();
+            }
             Event::UserEvent(UserEvent::RedrawRequested) => {
                 display.gl_window().window().request_redraw();
             }
@@ -114,9 +120,8 @@ fn main() {
             },
             Event::RedrawRequested(_) => {
                 if let Some(render_context) = &render_context {
-                    let (width, height) = display.get_framebuffer_dimensions();
                     render_context
-                        .render::<Display>(0, width as _, height as _, true)
+                        .render::<Display>(0, size.0 as _, size.1 as _, true)
                         .expect("Failed to draw on glutin window");
                     display.swap_buffers().unwrap();
                 }

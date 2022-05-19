@@ -19,26 +19,9 @@
 use std::env;
 use std::path::PathBuf;
 
-#[cfg(not(feature = "bindgen"))]
 fn main() {
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let crate_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    std::fs::copy(
-        crate_path.join("pregenerated_bindings.rs"),
-        out_path.join("bindings.rs"),
-    )
-    .expect("Couldn't find pregenerated bindings!");
-
-    println!("cargo:rustc-link-lib=mpv");
-}
-
-#[cfg(feature = "bindgen")]
-fn main() {
-    let bindings = bindgen::Builder::default()
-        .header("include/client.h")
-        .header("include/render.h")
-        .header("include/render_gl.h")
-        .header("include/stream_cb.h")
+    let bindings = bindgen::builder()
+        .header("include/wrapper.h")
         .impl_debug(true)
         .opaque_type("mpv_handle")
         .opaque_type("mpv_render_context")

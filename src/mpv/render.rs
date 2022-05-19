@@ -166,7 +166,6 @@ impl<C> From<OpenGLInitParams<C>> for mpv_opengl_init_params {
         Self {
             get_proc_address: Some(gpa_wrapper::<OpenGLInitParams<C>>),
             get_proc_address_ctx: Box::into_raw(Box::new(val)) as *mut c_void,
-            extra_exts: ptr::null(),
         }
     }
 }
