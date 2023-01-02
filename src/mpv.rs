@@ -445,6 +445,25 @@ impl Mpv {
     pub fn new() -> Result<Mpv> {
         Mpv::with_initializer(|_| Ok(()))
     }
+    
+    pub fn new_with_context(ctx: *mut libmpv_sys::mpv_handle) -> Result<Mpv> {
+        let api_version = unsafe { libmpv_sys::mpv_client_api_version() };
+        if crate::MPV_CLIENT_API_MAJOR != api_version >> 16 {
+            return Err(Error::VersionMismatch {
+                linked: crate::MPV_CLIENT_API_VERSION,
+                loaded: api_version,
+            });
+        }
+        
+        let ctx = NonNull::new(ctx).unwrap();
+
+        Ok(Mpv {
+            ctx,
+            event_context: EventContext::new(ctx),
+            #[cfg(feature = "protocols")]
+            protocols_guard: AtomicBool::new(false),
+        })
+    }
 
     /// Create a new `Mpv`.
     /// The same as `Mpv::new`, but you can set properties before `Mpv` is initialized.
