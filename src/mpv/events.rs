@@ -145,7 +145,7 @@ pub struct EventContext {
 unsafe impl Send for EventContext {}
 
 impl EventContext {
-    pub(crate) fn new(ctx: NonNull<libmpv_sys::mpv_handle>) -> Self {
+    pub fn new(ctx: NonNull<libmpv_sys::mpv_handle>) -> Self {
         EventContext {
             ctx,
             wakeup_callback_cleanup: None,
