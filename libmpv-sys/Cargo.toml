@@ -33,3 +33,6 @@ version = "0.54"
 # Workaround for https://github.com/rust-lang/rust-bindgen/issues/1313
 [lib]
 doctest = false
+
+[features]
+plugin = []
