@@ -43,6 +43,7 @@ default = ["protocols", "render"]
 protocols = [] # Enable custom protocol callbacks
 render = [] # Enable custom rendering
 build_libmpv = [] # build libmpv automatically, provided MPV_SOURCE is set
+plugin = ["libmpv-sys/plugin"]
 
 [badges]
 travis-ci = { repository = "https://github.com/ParadoxSpiral/mpv-rs", branch = "master" }
