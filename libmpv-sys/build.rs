@@ -33,6 +33,5 @@ fn main() {
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 
-    #[cfg(not(feature = "plugin"))]
     println!("cargo:rustc-link-lib=mpv");
 }
