@@ -119,7 +119,7 @@ pub enum Event<'a> {
     /// Received when used with observe_property
     PropertyChange {
         name: &'a str,
-        change: PropertyData<'a>,
+        change: Option<PropertyData<'a>>,
         reply_userdata: u64,
     },
     /// Received when the Event Queue is full
@@ -304,22 +304,26 @@ impl EventContext {
 
                 // This happens if the property is not available. For example,
                 // if you reached EndFile while observing a property.
-                if property.format == mpv_format::None {
-                    None
-                } else {
-                    let name = unsafe { mpv_cstr_to_str!(property.name) };
-                    Some(name.and_then(|name| {
+                let name = unsafe { mpv_cstr_to_str!(property.name) };
+                Some(name.and_then(|name| {
+                    if property.format == mpv_format::None {
+                        Ok(Event::PropertyChange {
+                            name,
+                            change: None,
+                            reply_userdata: event.reply_userdata,
+                        })
+                    } else {
                         // SAFETY: safe because we are passing format + data from an mpv_event_property
                         let change =
                             unsafe { PropertyData::from_raw(property.format, property.data) }?;
 
                         Ok(Event::PropertyChange {
                             name,
-                            change,
+                            change: Some(change),
                             reply_userdata: event.reply_userdata,
                         })
-                    }))
-                }
+                    }
+                }))
             }
             mpv_event_id::QueueOverflow => Some(Ok(Event::QueueOverflow)),
             _ => Some(Ok(Event::Deprecated(event))),
