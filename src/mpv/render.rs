@@ -24,7 +24,7 @@ use libmpv_sys::{
 };
 use std::collections::HashMap;
 use std::convert::From;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{c_void, CStr};
 use std::os::raw::c_int;
 use std::ptr;
 
@@ -59,7 +59,7 @@ pub struct FBO {
     pub height: i32,
 }
 
-#[repr(i32)]
+#[repr(u32)]
 #[derive(Clone)]
 pub enum RenderFrameInfoFlag {
     Present = libmpv_sys::mpv_render_frame_info_flag_MPV_RENDER_FRAME_INFO_PRESENT,
@@ -71,7 +71,7 @@ pub enum RenderFrameInfoFlag {
 impl From<u64> for RenderFrameInfoFlag {
     // mpv_render_frame_info_flag is u32, but mpv_render_frame_info.flags is u64 o\
     fn from(val: u64) -> Self {
-        let val = val as i32;
+        let val = val as u32;
         match val {
             libmpv_sys::mpv_render_frame_info_flag_MPV_RENDER_FRAME_INFO_PRESENT => {
                 RenderFrameInfoFlag::Present
@@ -123,27 +123,53 @@ pub enum RenderParam<GLContext> {
     SoftwarePointer(*mut u8),
 }
 
-impl<C> From<&RenderParam<C>> for i32 {
+impl<C> From<&RenderParam<C>> for u32 {
     fn from(val: &RenderParam<C>) -> Self {
         match val {
             RenderParam::Invalid => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_INVALID,
             RenderParam::ApiType(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_API_TYPE,
-            RenderParam::InitParams(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
+            RenderParam::InitParams(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_OPENGL_INIT_PARAMS
+            }
             RenderParam::FBO(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_OPENGL_FBO,
             RenderParam::FlipY(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_FLIP_Y,
             RenderParam::Depth(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_DEPTH,
-            RenderParam::ICCProfile(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_ICC_PROFILE,
-            RenderParam::AmbientLight(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_AMBIENT_LIGHT,
-            RenderParam::X11Display(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_X11_DISPLAY,
-            RenderParam::WaylandDisplay(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_WL_DISPLAY,
-            RenderParam::AdvancedControl(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_ADVANCED_CONTROL,
-            RenderParam::NextFrameInfo(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_NEXT_FRAME_INFO,
-            RenderParam::BlockForTargetTime(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME,
-            RenderParam::SkipRendering(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SKIP_RENDERING,
-            RenderParam::SoftwareFormat(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_FORMAT,
-            RenderParam::SoftwareSize(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_SIZE,
-            RenderParam::SoftwareStride(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_STRIDE,
-            RenderParam::SoftwarePointer(_) => libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_POINTER,
+            RenderParam::ICCProfile(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_ICC_PROFILE
+            }
+            RenderParam::AmbientLight(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_AMBIENT_LIGHT
+            }
+            RenderParam::X11Display(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_X11_DISPLAY
+            }
+            RenderParam::WaylandDisplay(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_WL_DISPLAY
+            }
+            RenderParam::AdvancedControl(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_ADVANCED_CONTROL
+            }
+            RenderParam::NextFrameInfo(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_NEXT_FRAME_INFO
+            }
+            RenderParam::BlockForTargetTime(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME
+            }
+            RenderParam::SkipRendering(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SKIP_RENDERING
+            }
+            RenderParam::SoftwareFormat(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_FORMAT
+            }
+            RenderParam::SoftwareSize(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_SIZE
+            }
+            RenderParam::SoftwareStride(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_STRIDE
+            }
+            RenderParam::SoftwarePointer(_) => {
+                libmpv_sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_POINTER
+            }
         }
     }
 }
@@ -182,13 +208,13 @@ impl<C> From<OpenGLInitParams<C>> for mpv_opengl_init_params {
 
 impl<C> From<RenderParam<C>> for mpv_render_param {
     fn from(val: RenderParam<C>) -> Self {
-        let type_ = i32::from(&val);
+        let type_ = u32::from(&val);
         let data = match val {
             RenderParam::Invalid => ptr::null_mut(),
             RenderParam::ApiType(api_type) => match api_type {
                 RenderParamApiType::OpenGl => {
                     libmpv_sys::MPV_RENDER_API_TYPE_OPENGL.as_ptr() as *mut c_void
-                },
+                }
                 RenderParamApiType::Software => {
                     libmpv_sys::MPV_RENDER_API_TYPE_SW.as_ptr() as *mut c_void
                 }
@@ -221,24 +247,24 @@ impl<C> From<RenderParam<C>> for mpv_render_param {
                 Box::into_raw(Box::new([width, height])) as *mut c_void
             }
             RenderParam::SoftwareStride(stride) => {
-                Box::into_raw(Box::new(stride as libmpv_sys::size_t)) as *mut c_void
+                Box::into_raw(Box::new(stride as usize)) as *mut c_void
             }
-            RenderParam::SoftwareFormat(format) => {
-                format as *mut c_void
-            }
-            RenderParam::SoftwarePointer(pixels) => pixels as *mut c_void
+            RenderParam::SoftwareFormat(format) => format as *mut c_void,
+            RenderParam::SoftwarePointer(pixels) => pixels as *mut c_void,
         };
         Self { type_, data }
     }
 }
 
 unsafe fn free_void_data<T>(ptr: *mut c_void) {
-    Box::<T>::from_raw(ptr as *mut T);
+    drop(Box::<T>::from_raw(ptr as *mut T));
 }
 
 unsafe fn free_init_params<C>(ptr: *mut c_void) {
     let params = Box::from_raw(ptr as *mut mpv_opengl_init_params);
-    Box::from_raw(params.get_proc_address_ctx as *mut OpenGLInitParams<C>);
+    drop(Box::from_raw(
+        params.get_proc_address_ctx as *mut OpenGLInitParams<C>,
+    ));
 }
 
 impl RenderContext {
@@ -281,7 +307,7 @@ impl RenderContext {
             let raw_array = Box::into_raw(raw_params.into_boxed_slice()) as *mut mpv_render_param;
             let ctx = Box::into_raw(Box::new(std::ptr::null_mut() as _));
             let err = libmpv_sys::mpv_render_context_create(ctx, &mut *mpv, raw_array);
-            Box::from_raw(raw_array);
+            drop(Box::from_raw(raw_array));
             for (ptr, deleter) in raw_ptrs.iter() {
                 (deleter)(*ptr as _);
             }
@@ -382,7 +408,7 @@ impl RenderContext {
 
         let ret = unsafe { mpv_err((), mpv_render_context_render(self.ctx, raw_array)) };
         unsafe {
-            Box::from_raw(raw_array);
+            drop(Box::from_raw(raw_array));
         }
 
         unsafe {
@@ -395,7 +421,7 @@ impl RenderContext {
     }
 
     /// Software render video directly to texture buffer
-    /// 
+    ///
     /// # Arguments
     ///
     /// * `width` - The width of the framebuffer in pixels.
@@ -403,16 +429,23 @@ impl RenderContext {
     /// * `format` - Format to render into the texture buffer (Example: `&CStr::from_bytes_with_nul(b"rgba\0").unwrap()`).
     /// * `stride` - How many bytes in each row of pixels. (Example: `width * 4`).
     /// * `texture_buffer` - The texture buffer to render into.
-    pub fn render_sw(&self, width: i32, height: i32, format: &CStr, stride: usize, texture_buffer: &mut [u8]) -> Result<()> {
+    pub fn render_sw(
+        &self,
+        width: i32,
+        height: i32,
+        format: &CStr,
+        stride: usize,
+        texture_buffer: &mut [u8],
+    ) -> Result<()> {
         let mut raw_params: Vec<mpv_render_param> = Vec::with_capacity(3);
         let mut raw_ptrs: HashMap<*const c_void, DeleterFn> = HashMap::new();
 
-        let raw_param: mpv_render_param =
-            RenderParam::<()>::SoftwareStride(stride).into();
+        let raw_param: mpv_render_param = RenderParam::<()>::SoftwareStride(stride).into();
         raw_ptrs.insert(raw_param.data, free_void_data::<usize>);
         raw_params.push(raw_param);
 
-        let raw_param: mpv_render_param = RenderParam::<()>::SoftwareFormat(format.as_ptr() as *const u8).into();
+        let raw_param: mpv_render_param =
+            RenderParam::<()>::SoftwareFormat(format.as_ptr() as *const u8).into();
         // No need to free as we only have a reference to it
         raw_params.push(raw_param);
 
@@ -420,7 +453,8 @@ impl RenderContext {
         raw_ptrs.insert(raw_param.data, free_void_data::<[i32; 2]>);
         raw_params.push(raw_param);
 
-        let raw_param: mpv_render_param = RenderParam::<()>::SoftwarePointer(texture_buffer.as_mut_ptr()).into();
+        let raw_param: mpv_render_param =
+            RenderParam::<()>::SoftwarePointer(texture_buffer.as_mut_ptr()).into();
         // No need to free as we only have a reference to it
         raw_params.push(raw_param);
 
@@ -434,7 +468,7 @@ impl RenderContext {
 
         let ret = unsafe { mpv_err((), mpv_render_context_render(self.ctx, raw_array)) };
         unsafe {
-            Box::from_raw(raw_array); // Free memory
+            drop(Box::from_raw(raw_array)); // Free memory
         }
 
         unsafe {
@@ -461,7 +495,7 @@ impl RenderContext {
         }
         let raw_callback = Box::into_raw(Box::new(callback));
         self.update_callback_cleanup = Some(Box::new(move || unsafe {
-            Box::from_raw(raw_callback);
+            drop(Box::from_raw(raw_callback));
         }) as Box<dyn FnOnce()>);
         unsafe {
             mpv_render_context_set_update_callback(
