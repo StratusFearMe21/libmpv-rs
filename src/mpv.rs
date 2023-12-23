@@ -38,6 +38,8 @@ pub mod protocol;
 #[cfg(feature = "render")]
 pub mod render;
 
+use stable_deref_trait::StableDeref;
+
 pub use self::errors::*;
 use self::events::EventContext;
 use super::*;
@@ -101,13 +103,13 @@ unsafe impl GetData for i64 {
 }
 
 #[derive(Debug)]
-pub enum MpvNodeValue<'a> {
-    String(&'a str),
+pub enum MpvNodeValue {
+    String(MpvNodeString),
     Flag(bool),
     Int64(i64),
     Double(f64),
-    Array(MpvNodeArrayIter<'a>),
-    Map(MpvNodeMapIter<'a>),
+    Array(MpvNodeArray),
+    Map(MpvNodeMap),
     None,
 }
 
@@ -162,55 +164,111 @@ impl<'parent> Iterator for MpvNodeMapIter<'parent> {
 #[derive(Debug)]
 pub struct MpvNode(libmpv_sys::mpv_node);
 
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct MpvNodeMap(MpvNode);
+
+impl Deref for MpvNodeMap {
+    type Target = libmpv_sys::mpv_node_list;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 .0.u.list }
+    }
+}
+
+unsafe impl StableDeref for MpvNodeMap {}
+
+impl MpvNodeMap {
+    pub fn iter(&self) -> MpvNodeMapIter<'_> {
+        MpvNodeMapIter {
+            list: unsafe { *self.0 .0.u.list },
+            curr: 0,
+            _does_not_outlive: PhantomData,
+        }
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct MpvNodeArray(MpvNode);
+
+impl Deref for MpvNodeArray {
+    type Target = libmpv_sys::mpv_node_list;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 .0.u.list }
+    }
+}
+
+unsafe impl StableDeref for MpvNodeArray {}
+
+impl MpvNodeArray {
+    pub fn iter(&self) -> MpvNodeArrayIter<'_> {
+        MpvNodeArrayIter {
+            list: unsafe { *self.0 .0.u.list },
+            curr: 0,
+            _does_not_outlive: PhantomData,
+        }
+    }
+}
+
 impl Drop for MpvNode {
     fn drop(&mut self) {
         unsafe { libmpv_sys::mpv_free_node_contents(&mut self.0 as *mut libmpv_sys::mpv_node) };
     }
 }
 
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct MpvNodeString(MpvNode);
+
+impl Deref for MpvNodeString {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            std::str::from_utf8_unchecked(std::ffi::CStr::from_ptr(self.0 .0.u.string).to_bytes())
+        }
+    }
+}
+
+unsafe impl StableDeref for MpvNodeString {}
+
 impl MpvNode {
-    pub fn value(&self) -> Result<MpvNodeValue<'_>> {
+    pub fn value(self) -> Result<MpvNodeValue> {
         let node = self.0;
         Ok(match node.format {
             mpv_format::Flag => MpvNodeValue::Flag(unsafe { node.u.flag } == 1),
             mpv_format::Int64 => MpvNodeValue::Int64(unsafe { node.u.int64 }),
             mpv_format::Double => MpvNodeValue::Double(unsafe { node.u.double_ }),
             mpv_format::String => {
-                let text = unsafe { mpv_cstr_to_str!(node.u.string) }?;
-                MpvNodeValue::String(text)
+                let _ = unsafe { mpv_cstr_to_str!(node.u.string) }?;
+                MpvNodeValue::String(MpvNodeString(self))
             }
 
-            mpv_format::Array => MpvNodeValue::Array(MpvNodeArrayIter {
-                list: unsafe { *node.u.list },
-                curr: 0,
-                _does_not_outlive: PhantomData,
-            }),
+            mpv_format::Array => MpvNodeValue::Array(MpvNodeArray(self)),
 
-            mpv_format::Map => MpvNodeValue::Map(MpvNodeMapIter {
-                list: unsafe { *node.u.list },
-                curr: 0,
-                _does_not_outlive: PhantomData,
-            }),
+            mpv_format::Map => MpvNodeValue::Map(MpvNodeMap(self)),
             mpv_format::None => MpvNodeValue::None,
             _ => return Err(Error::Raw(mpv_error::PropertyError)),
         })
     }
 
-    pub fn to_bool(&self) -> Option<bool> {
+    pub fn to_bool(self) -> Option<bool> {
         if let MpvNodeValue::Flag(value) = self.value().ok()? {
             Some(value)
         } else {
             None
         }
     }
-    pub fn to_i64(&self) -> Option<i64> {
+    pub fn to_i64(self) -> Option<i64> {
         if let MpvNodeValue::Int64(value) = self.value().ok()? {
             Some(value)
         } else {
             None
         }
     }
-    pub fn to_f64(&self) -> Option<f64> {
+    pub fn to_f64(self) -> Option<f64> {
         if let MpvNodeValue::Double(value) = self.value().ok()? {
             Some(value)
         } else {
@@ -218,7 +276,7 @@ impl MpvNode {
         }
     }
 
-    pub fn to_str(&self) -> Option<&str> {
+    pub fn to_str(self) -> Option<MpvNodeString> {
         if let MpvNodeValue::String(value) = self.value().ok()? {
             Some(value)
         } else {
@@ -226,7 +284,7 @@ impl MpvNode {
         }
     }
 
-    pub fn to_array(&self) -> Option<MpvNodeArrayIter<'_>> {
+    pub fn to_array(self) -> Option<MpvNodeArray> {
         if let MpvNodeValue::Array(value) = self.value().ok()? {
             Some(value)
         } else {
@@ -234,7 +292,7 @@ impl MpvNode {
         }
     }
 
-    pub fn to_map(&self) -> Option<MpvNodeMapIter<'_>> {
+    pub fn to_map(self) -> Option<MpvNodeMap> {
         if let MpvNodeValue::Map(value) = self.value().ok()? {
             Some(value)
         } else {
@@ -445,7 +503,7 @@ impl Mpv {
     pub fn new() -> Result<Mpv> {
         Mpv::with_initializer(|_| Ok(()))
     }
-    
+
     pub fn new_with_context(ctx: *mut libmpv_sys::mpv_handle) -> Result<Mpv> {
         let api_version = unsafe { libmpv_sys::mpv_client_api_version() };
         if crate::MPV_CLIENT_API_MAJOR != api_version >> 16 {
@@ -454,7 +512,7 @@ impl Mpv {
                 loaded: api_version,
             });
         }
-        
+
         let ctx = NonNull::new(ctx).unwrap();
 
         Ok(Mpv {
@@ -505,7 +563,7 @@ impl Mpv {
         let ret = mpv_err((), unsafe {
             libmpv_sys::mpv_load_config_file(self.ctx.as_ptr(), file)
         });
-        unsafe { CString::from_raw(file) };
+        unsafe { drop(CString::from_raw(file)) };
         ret
     }
 

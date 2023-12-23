@@ -363,7 +363,7 @@ impl EventContext {
         }
         let raw_callback = Box::into_raw(Box::new(callback));
         self.wakeup_callback_cleanup = Some(Box::new(move || unsafe {
-            Box::from_raw(raw_callback);
+            drop(Box::from_raw(raw_callback));
         }) as Box<dyn FnOnce()>);
         unsafe {
             mpv_set_wakeup_callback(
