@@ -336,79 +336,86 @@ impl MpvNode {
     }
 }
 
-impl MpvNode {
-    pub fn value<'a>(&'a self) -> Result<MpvNodeValue<'a>> {
-        let node = self.0;
-        Ok(match node.format {
-            mpv_format::Flag => MpvNodeValue::Flag(unsafe { node.u.flag } == 1),
-            mpv_format::Int64 => MpvNodeValue::Int64(unsafe { node.u.int64 }),
-            mpv_format::Double => MpvNodeValue::Double(unsafe { node.u.double_ }),
-            mpv_format::String => {
-                let _ = unsafe { mpv_cstr_to_str!(node.u.string) }?;
-                MpvNodeValue::String(MpvNodeString(CowMpvNode::Borrowed(BorrowedMpvNode(
-                    self.0,
-                    PhantomData,
-                ))))
+macro_rules! impl_borrowed {
+    ($t:ty) => {
+        impl $t {
+            pub fn value<'a>(&'a self) -> Result<MpvNodeValue<'a>> {
+                let node = self.0;
+                Ok(match node.format {
+                    mpv_format::Flag => MpvNodeValue::Flag(unsafe { node.u.flag } == 1),
+                    mpv_format::Int64 => MpvNodeValue::Int64(unsafe { node.u.int64 }),
+                    mpv_format::Double => MpvNodeValue::Double(unsafe { node.u.double_ }),
+                    mpv_format::String => {
+                        let _ = unsafe { mpv_cstr_to_str!(node.u.string) }?;
+                        MpvNodeValue::String(MpvNodeString(CowMpvNode::Borrowed(BorrowedMpvNode(
+                            self.0,
+                            PhantomData,
+                        ))))
+                    }
+
+                    mpv_format::Array => MpvNodeValue::Array(MpvNodeArray(CowMpvNode::Borrowed(
+                        BorrowedMpvNode(self.0, PhantomData),
+                    ))),
+
+                    mpv_format::Map => MpvNodeValue::Map(MpvNodeMap(CowMpvNode::Borrowed(
+                        BorrowedMpvNode(self.0, PhantomData),
+                    ))),
+                    mpv_format::None => MpvNodeValue::None,
+                    _ => return Err(Error::Raw(mpv_error::PropertyError)),
+                })
             }
 
-            mpv_format::Array => MpvNodeValue::Array(MpvNodeArray(CowMpvNode::Borrowed(
-                BorrowedMpvNode(self.0, PhantomData),
-            ))),
+            pub fn as_bool(&self) -> Option<bool> {
+                if let MpvNodeValue::Flag(value) = self.value().ok()? {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+            pub fn as_i64(&self) -> Option<i64> {
+                if let MpvNodeValue::Int64(value) = self.value().ok()? {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+            pub fn as_f64(&self) -> Option<f64> {
+                if let MpvNodeValue::Double(value) = self.value().ok()? {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
 
-            mpv_format::Map => MpvNodeValue::Map(MpvNodeMap(CowMpvNode::Borrowed(
-                BorrowedMpvNode(self.0, PhantomData),
-            ))),
-            mpv_format::None => MpvNodeValue::None,
-            _ => return Err(Error::Raw(mpv_error::PropertyError)),
-        })
-    }
+            pub fn as_str<'a>(&'a self) -> Option<MpvNodeString<'a>> {
+                if let MpvNodeValue::String(value) = self.value().ok()? {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
 
-    pub fn as_bool(&self) -> Option<bool> {
-        if let MpvNodeValue::Flag(value) = self.value().ok()? {
-            Some(value)
-        } else {
-            None
-        }
-    }
-    pub fn as_i64(&self) -> Option<i64> {
-        if let MpvNodeValue::Int64(value) = self.value().ok()? {
-            Some(value)
-        } else {
-            None
-        }
-    }
-    pub fn as_f64(&self) -> Option<f64> {
-        if let MpvNodeValue::Double(value) = self.value().ok()? {
-            Some(value)
-        } else {
-            None
-        }
-    }
+            pub fn as_array<'a>(&'a self) -> Option<MpvNodeArray<'a>> {
+                if let MpvNodeValue::Array(value) = self.value().ok()? {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
 
-    pub fn as_str<'a>(&'a self) -> Option<MpvNodeString<'a>> {
-        if let MpvNodeValue::String(value) = self.value().ok()? {
-            Some(value)
-        } else {
-            None
+            pub fn as_map<'a>(&'a self) -> Option<MpvNodeMap<'a>> {
+                if let MpvNodeValue::Map(value) = self.value().ok()? {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
         }
-    }
-
-    pub fn as_array<'a>(&'a self) -> Option<MpvNodeArray<'a>> {
-        if let MpvNodeValue::Array(value) = self.value().ok()? {
-            Some(value)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_map<'a>(&'a self) -> Option<MpvNodeMap<'a>> {
-        if let MpvNodeValue::Map(value) = self.value().ok()? {
-            Some(value)
-        } else {
-            None
-        }
-    }
+    };
 }
+
+impl_borrowed!(MpvNode);
+impl_borrowed!(BorrowedMpvNode<'_>);
 
 unsafe impl GetData for MpvNode {
     fn get_from_c_void<T, F: FnMut(*mut ctype::c_void) -> Result<T>>(
