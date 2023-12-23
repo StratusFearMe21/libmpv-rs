@@ -117,8 +117,7 @@ pub enum MpvNodeValue<'a> {
 #[derive(Debug)]
 pub struct MpvNodeArrayIter<'parent> {
     curr: i32,
-    list: libmpv_sys::mpv_node_list,
-    _does_not_outlive: PhantomData<&'parent MpvNode>,
+    list: &'parent libmpv_sys::mpv_node_list,
 }
 
 impl<'parent> Iterator for MpvNodeArrayIter<'parent> {
@@ -141,17 +140,12 @@ impl<'parent> Iterator for MpvNodeArrayIter<'parent> {
 #[derive(Debug)]
 pub struct MpvNodeMapIter<'parent> {
     curr: i32,
-    list: libmpv_sys::mpv_node_list,
-    _does_not_outlive: PhantomData<&'parent MpvNode>,
+    list: &'parent libmpv_sys::mpv_node_list,
 }
 
 impl<'a> MpvNodeMapIter<'a> {
     pub fn new(list: &'a libmpv_sys::mpv_node_list) -> MpvNodeMapIter<'a> {
-        MpvNodeMapIter {
-            curr: 0,
-            list: *list,
-            _does_not_outlive: PhantomData,
-        }
+        MpvNodeMapIter { curr: 0, list }
     }
 }
 
@@ -221,9 +215,8 @@ unsafe impl<'a> StableDeref for MpvNodeMap<'a> {}
 impl<'a> MpvNodeMap<'a> {
     pub fn iter(&'a self) -> MpvNodeMapIter<'a> {
         MpvNodeMapIter {
-            list: unsafe { *self.0.deref().u.list },
+            list: unsafe { &*self.0.deref().u.list },
             curr: 0,
-            _does_not_outlive: PhantomData,
         }
     }
 }
@@ -245,9 +238,8 @@ unsafe impl<'a> StableDeref for MpvNodeArray<'a> {}
 impl<'a> MpvNodeArray<'a> {
     pub fn iter(&'a self) -> MpvNodeArrayIter<'a> {
         MpvNodeArrayIter {
-            list: unsafe { *self.0.deref().u.list },
+            list: unsafe { &*self.0.deref().u.list },
             curr: 0,
-            _does_not_outlive: PhantomData,
         }
     }
 }
