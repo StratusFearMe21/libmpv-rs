@@ -103,13 +103,13 @@ unsafe impl GetData for i64 {
 }
 
 #[derive(Debug)]
-pub enum MpvNodeValue {
-    String(MpvNodeString),
+pub enum MpvNodeValue<'a> {
+    String(MpvNodeString<'a>),
     Flag(bool),
     Int64(i64),
     Double(f64),
-    Array(MpvNodeArray),
-    Map(MpvNodeMap),
+    Array(MpvNodeArray<'a>),
+    Map(MpvNodeMap<'a>),
     None,
 }
 
@@ -120,16 +120,19 @@ pub struct MpvNodeArrayIter<'parent> {
     _does_not_outlive: PhantomData<&'parent MpvNode>,
 }
 
-impl Iterator for MpvNodeArrayIter<'_> {
-    type Item = MpvNode;
+impl<'parent> Iterator for MpvNodeArrayIter<'parent> {
+    type Item = BorrowedMpvNode<'parent>;
 
-    fn next(&mut self) -> Option<MpvNode> {
+    fn next(&mut self) -> Option<BorrowedMpvNode<'parent>> {
         if self.curr >= self.list.num {
             None
         } else {
             let offset = self.curr.try_into().ok()?;
             self.curr += 1;
-            Some(MpvNode(unsafe { *self.list.values.offset(offset) }))
+            Some(BorrowedMpvNode(
+                unsafe { *self.list.values.offset(offset) },
+                PhantomData,
+            ))
         }
     }
 }
@@ -142,9 +145,9 @@ pub struct MpvNodeMapIter<'parent> {
 }
 
 impl<'parent> Iterator for MpvNodeMapIter<'parent> {
-    type Item = (&'parent str, MpvNode);
+    type Item = (&'parent str, BorrowedMpvNode<'parent>);
 
-    fn next(&mut self) -> Option<(&'parent str, MpvNode)> {
+    fn next(&mut self) -> Option<(&'parent str, BorrowedMpvNode<'parent>)> {
         if self.curr >= self.list.num {
             None
         } else {
@@ -156,7 +159,7 @@ impl<'parent> Iterator for MpvNodeMapIter<'parent> {
                 )
             };
             self.curr += 1;
-            Some((key.ok()?, MpvNode(value)))
+            Some((key.ok()?, BorrowedMpvNode(value, PhantomData)))
         }
     }
 }
@@ -164,78 +167,100 @@ impl<'parent> Iterator for MpvNodeMapIter<'parent> {
 #[derive(Debug)]
 pub struct MpvNode(libmpv_sys::mpv_node);
 
-#[repr(transparent)]
-#[derive(Debug)]
-pub struct MpvNodeMap(MpvNode);
-
-impl Deref for MpvNodeMap {
-    type Target = libmpv_sys::mpv_node_list;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.0 .0.u.list }
-    }
-}
-
-unsafe impl StableDeref for MpvNodeMap {}
-
-impl MpvNodeMap {
-    pub fn iter(&self) -> MpvNodeMapIter<'_> {
-        MpvNodeMapIter {
-            list: unsafe { *self.0 .0.u.list },
-            curr: 0,
-            _does_not_outlive: PhantomData,
-        }
-    }
-}
-
-#[repr(transparent)]
-#[derive(Debug)]
-pub struct MpvNodeArray(MpvNode);
-
-impl Deref for MpvNodeArray {
-    type Target = libmpv_sys::mpv_node_list;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.0 .0.u.list }
-    }
-}
-
-unsafe impl StableDeref for MpvNodeArray {}
-
-impl MpvNodeArray {
-    pub fn iter(&self) -> MpvNodeArrayIter<'_> {
-        MpvNodeArrayIter {
-            list: unsafe { *self.0 .0.u.list },
-            curr: 0,
-            _does_not_outlive: PhantomData,
-        }
-    }
-}
-
 impl Drop for MpvNode {
     fn drop(&mut self) {
         unsafe { libmpv_sys::mpv_free_node_contents(&mut self.0 as *mut libmpv_sys::mpv_node) };
     }
 }
 
-#[repr(transparent)]
 #[derive(Debug)]
-pub struct MpvNodeString(MpvNode);
+pub struct BorrowedMpvNode<'a>(libmpv_sys::mpv_node, PhantomData<&'a libmpv_sys::mpv_node>);
 
-impl Deref for MpvNodeString {
-    type Target = str;
+#[derive(Debug)]
+enum CowMpvNode<'a> {
+    Owned(MpvNode),
+    Borrowed(BorrowedMpvNode<'a>),
+}
+
+impl<'a> Deref for CowMpvNode<'a> {
+    type Target = libmpv_sys::mpv_node;
 
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            std::str::from_utf8_unchecked(std::ffi::CStr::from_ptr(self.0 .0.u.string).to_bytes())
+        match self {
+            Self::Owned(o) => &o.0,
+            Self::Borrowed(b) => &b.0,
         }
     }
 }
 
-unsafe impl StableDeref for MpvNodeString {}
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct MpvNodeMap<'a>(CowMpvNode<'a>);
+
+impl<'a> Deref for MpvNodeMap<'a> {
+    type Target = libmpv_sys::mpv_node_list;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0.deref().u.list }
+    }
+}
+
+unsafe impl<'a> StableDeref for MpvNodeMap<'a> {}
+
+impl<'a> MpvNodeMap<'a> {
+    pub fn iter(&'a self) -> MpvNodeMapIter<'a> {
+        MpvNodeMapIter {
+            list: unsafe { *self.0.deref().u.list },
+            curr: 0,
+            _does_not_outlive: PhantomData,
+        }
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct MpvNodeArray<'a>(CowMpvNode<'a>);
+
+impl<'a> Deref for MpvNodeArray<'a> {
+    type Target = libmpv_sys::mpv_node_list;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0.deref().u.list }
+    }
+}
+
+unsafe impl<'a> StableDeref for MpvNodeArray<'a> {}
+
+impl<'a> MpvNodeArray<'a> {
+    pub fn iter(&'a self) -> MpvNodeArrayIter<'a> {
+        MpvNodeArrayIter {
+            list: unsafe { *self.0.deref().u.list },
+            curr: 0,
+            _does_not_outlive: PhantomData,
+        }
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct MpvNodeString<'a>(CowMpvNode<'a>);
+
+impl<'a> Deref for MpvNodeString<'a> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            std::str::from_utf8_unchecked(
+                std::ffi::CStr::from_ptr(self.0.deref().u.string).to_bytes(),
+            )
+        }
+    }
+}
+
+unsafe impl<'a> StableDeref for MpvNodeString<'a> {}
 
 impl MpvNode {
-    pub fn value(self) -> Result<MpvNodeValue> {
+    pub fn into_value(self) -> Result<MpvNodeValue<'static>> {
         let node = self.0;
         Ok(match node.format {
             mpv_format::Flag => MpvNodeValue::Flag(unsafe { node.u.flag } == 1),
@@ -243,32 +268,106 @@ impl MpvNode {
             mpv_format::Double => MpvNodeValue::Double(unsafe { node.u.double_ }),
             mpv_format::String => {
                 let _ = unsafe { mpv_cstr_to_str!(node.u.string) }?;
-                MpvNodeValue::String(MpvNodeString(self))
+                MpvNodeValue::String(MpvNodeString(CowMpvNode::Owned(self)))
             }
 
-            mpv_format::Array => MpvNodeValue::Array(MpvNodeArray(self)),
+            mpv_format::Array => MpvNodeValue::Array(MpvNodeArray(CowMpvNode::Owned(self))),
 
-            mpv_format::Map => MpvNodeValue::Map(MpvNodeMap(self)),
+            mpv_format::Map => MpvNodeValue::Map(MpvNodeMap(CowMpvNode::Owned(self))),
             mpv_format::None => MpvNodeValue::None,
             _ => return Err(Error::Raw(mpv_error::PropertyError)),
         })
     }
 
-    pub fn to_bool(self) -> Option<bool> {
+    pub fn into_bool(self) -> Option<bool> {
+        if let MpvNodeValue::Flag(value) = self.into_value().ok()? {
+            Some(value)
+        } else {
+            None
+        }
+    }
+    pub fn into_i64(self) -> Option<i64> {
+        if let MpvNodeValue::Int64(value) = self.into_value().ok()? {
+            Some(value)
+        } else {
+            None
+        }
+    }
+    pub fn into_f64(self) -> Option<f64> {
+        if let MpvNodeValue::Double(value) = self.into_value().ok()? {
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    pub fn into_str(self) -> Option<MpvNodeString<'static>> {
+        if let MpvNodeValue::String(value) = self.into_value().ok()? {
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    pub fn into_array(self) -> Option<MpvNodeArray<'static>> {
+        if let MpvNodeValue::Array(value) = self.into_value().ok()? {
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    pub fn into_map(self) -> Option<MpvNodeMap<'static>> {
+        if let MpvNodeValue::Map(value) = self.into_value().ok()? {
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+impl MpvNode {
+    pub fn value<'a>(&'a self) -> Result<MpvNodeValue<'a>> {
+        let node = self.0;
+        Ok(match node.format {
+            mpv_format::Flag => MpvNodeValue::Flag(unsafe { node.u.flag } == 1),
+            mpv_format::Int64 => MpvNodeValue::Int64(unsafe { node.u.int64 }),
+            mpv_format::Double => MpvNodeValue::Double(unsafe { node.u.double_ }),
+            mpv_format::String => {
+                let _ = unsafe { mpv_cstr_to_str!(node.u.string) }?;
+                MpvNodeValue::String(MpvNodeString(CowMpvNode::Borrowed(BorrowedMpvNode(
+                    self.0,
+                    PhantomData,
+                ))))
+            }
+
+            mpv_format::Array => MpvNodeValue::Array(MpvNodeArray(CowMpvNode::Borrowed(
+                BorrowedMpvNode(self.0, PhantomData),
+            ))),
+
+            mpv_format::Map => MpvNodeValue::Map(MpvNodeMap(CowMpvNode::Borrowed(
+                BorrowedMpvNode(self.0, PhantomData),
+            ))),
+            mpv_format::None => MpvNodeValue::None,
+            _ => return Err(Error::Raw(mpv_error::PropertyError)),
+        })
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
         if let MpvNodeValue::Flag(value) = self.value().ok()? {
             Some(value)
         } else {
             None
         }
     }
-    pub fn to_i64(self) -> Option<i64> {
+    pub fn as_i64(&self) -> Option<i64> {
         if let MpvNodeValue::Int64(value) = self.value().ok()? {
             Some(value)
         } else {
             None
         }
     }
-    pub fn to_f64(self) -> Option<f64> {
+    pub fn as_f64(&self) -> Option<f64> {
         if let MpvNodeValue::Double(value) = self.value().ok()? {
             Some(value)
         } else {
@@ -276,7 +375,7 @@ impl MpvNode {
         }
     }
 
-    pub fn to_str(self) -> Option<MpvNodeString> {
+    pub fn as_str<'a>(&'a self) -> Option<MpvNodeString<'a>> {
         if let MpvNodeValue::String(value) = self.value().ok()? {
             Some(value)
         } else {
@@ -284,7 +383,7 @@ impl MpvNode {
         }
     }
 
-    pub fn to_array(self) -> Option<MpvNodeArray> {
+    pub fn as_array<'a>(&'a self) -> Option<MpvNodeArray<'a>> {
         if let MpvNodeValue::Array(value) = self.value().ok()? {
             Some(value)
         } else {
@@ -292,7 +391,7 @@ impl MpvNode {
         }
     }
 
-    pub fn to_map(self) -> Option<MpvNodeMap> {
+    pub fn as_map<'a>(&'a self) -> Option<MpvNodeMap<'a>> {
         if let MpvNodeValue::Map(value) = self.value().ok()? {
             Some(value)
         } else {
