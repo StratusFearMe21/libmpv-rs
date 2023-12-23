@@ -145,6 +145,16 @@ pub struct MpvNodeMapIter<'parent> {
     _does_not_outlive: PhantomData<&'parent MpvNode>,
 }
 
+impl<'a> MpvNodeMapIter<'a> {
+    pub fn new(list: &'a libmpv_sys::mpv_node_list) -> MpvNodeMapIter<'a> {
+        MpvNodeMapIter {
+            curr: 0,
+            list: *list,
+            _does_not_outlive: PhantomData,
+        }
+    }
+}
+
 impl<'parent> Iterator for MpvNodeMapIter<'parent> {
     type Item = (&'parent str, BorrowedMpvNode<'parent>);
 
