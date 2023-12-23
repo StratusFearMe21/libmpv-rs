@@ -38,6 +38,7 @@ pub mod protocol;
 #[cfg(feature = "render")]
 pub mod render;
 
+use serde::Serializer;
 use stable_deref_trait::StableDeref;
 
 pub use self::errors::*;
@@ -244,6 +245,15 @@ impl<'a> MpvNodeArray<'a> {
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct MpvNodeString<'a>(CowMpvNode<'a>);
+
+impl serde::Serialize for MpvNodeString<'_> {
+    fn serialize<S>(&self, serializer: S) -> std::prelude::v1::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.deref().serialize(serializer)
+    }
+}
 
 impl<'a> Deref for MpvNodeString<'a> {
     type Target = str;
