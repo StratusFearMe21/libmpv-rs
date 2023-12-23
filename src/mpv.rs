@@ -17,7 +17,6 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 use std::convert::TryInto;
-use std::marker::PhantomData;
 
 macro_rules! mpv_cstr_to_str {
     ($cstr: expr) => {
@@ -129,10 +128,9 @@ impl<'parent> Iterator for MpvNodeArrayIter<'parent> {
         } else {
             let offset = self.curr.try_into().ok()?;
             self.curr += 1;
-            Some(BorrowedMpvNode(
-                unsafe { *self.list.values.offset(offset) },
-                PhantomData,
-            ))
+            Some(BorrowedMpvNode(unsafe {
+                &*self.list.values.offset(offset)
+            }))
         }
     }
 }
@@ -160,11 +158,11 @@ impl<'parent> Iterator for MpvNodeMapIter<'parent> {
             let (key, value) = unsafe {
                 (
                     mpv_cstr_to_str!(*self.list.keys.offset(offset)),
-                    *self.list.values.offset(offset),
+                    &*self.list.values.offset(offset),
                 )
             };
             self.curr += 1;
-            Some((key.ok()?, BorrowedMpvNode(value, PhantomData)))
+            Some((key.ok()?, BorrowedMpvNode(value)))
         }
     }
 }
@@ -179,7 +177,7 @@ impl Drop for MpvNode {
 }
 
 #[derive(Debug)]
-pub struct BorrowedMpvNode<'a>(libmpv_sys::mpv_node, PhantomData<&'a libmpv_sys::mpv_node>);
+pub struct BorrowedMpvNode<'a>(&'a libmpv_sys::mpv_node);
 
 #[derive(Debug)]
 enum CowMpvNode<'a> {
@@ -350,17 +348,16 @@ macro_rules! impl_borrowed {
                     mpv_format::String => {
                         let _ = unsafe { mpv_cstr_to_str!(node.u.string) }?;
                         MpvNodeValue::String(MpvNodeString(CowMpvNode::Borrowed(BorrowedMpvNode(
-                            self.0,
-                            PhantomData,
+                            &self.0,
                         ))))
                     }
 
                     mpv_format::Array => MpvNodeValue::Array(MpvNodeArray(CowMpvNode::Borrowed(
-                        BorrowedMpvNode(self.0, PhantomData),
+                        BorrowedMpvNode(&self.0),
                     ))),
 
                     mpv_format::Map => MpvNodeValue::Map(MpvNodeMap(CowMpvNode::Borrowed(
-                        BorrowedMpvNode(self.0, PhantomData),
+                        BorrowedMpvNode(&self.0),
                     ))),
                     mpv_format::None => MpvNodeValue::None,
                     _ => return Err(Error::Raw(mpv_error::PropertyError)),
