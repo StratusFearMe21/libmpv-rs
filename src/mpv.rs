@@ -120,17 +120,15 @@ pub struct MpvNodeArrayIter<'parent> {
 }
 
 impl<'parent> Iterator for MpvNodeArrayIter<'parent> {
-    type Item = BorrowedMpvNode<'parent>;
+    type Item = &'parent BorrowedMpvNode;
 
-    fn next(&mut self) -> Option<BorrowedMpvNode<'parent>> {
+    fn next(&mut self) -> Option<&'parent BorrowedMpvNode> {
         if self.curr >= self.list.num {
             None
         } else {
             let offset = self.curr.try_into().ok()?;
             self.curr += 1;
-            Some(BorrowedMpvNode(unsafe {
-                &*self.list.values.offset(offset)
-            }))
+            Some(unsafe { &*(self.list.values.offset(offset) as *mut BorrowedMpvNode as *const _) })
         }
     }
 }
@@ -148,9 +146,9 @@ impl<'a> MpvNodeMapIter<'a> {
 }
 
 impl<'parent> Iterator for MpvNodeMapIter<'parent> {
-    type Item = (&'parent str, BorrowedMpvNode<'parent>);
+    type Item = (&'parent str, &'parent BorrowedMpvNode);
 
-    fn next(&mut self) -> Option<(&'parent str, BorrowedMpvNode<'parent>)> {
+    fn next(&mut self) -> Option<(&'parent str, &'parent BorrowedMpvNode)> {
         if self.curr >= self.list.num {
             None
         } else {
@@ -158,16 +156,17 @@ impl<'parent> Iterator for MpvNodeMapIter<'parent> {
             let (key, value) = unsafe {
                 (
                     mpv_cstr_to_str!(*self.list.keys.offset(offset)),
-                    &*self.list.values.offset(offset),
+                    &*(self.list.values.offset(offset) as *mut BorrowedMpvNode as *const _),
                 )
             };
             self.curr += 1;
-            Some((key.ok()?, BorrowedMpvNode(value)))
+            Some((key.ok()?, value))
         }
     }
 }
 
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct MpvNode(libmpv_sys::mpv_node);
 
 impl Drop for MpvNode {
@@ -177,12 +176,13 @@ impl Drop for MpvNode {
 }
 
 #[derive(Debug)]
-pub struct BorrowedMpvNode<'a>(&'a libmpv_sys::mpv_node);
+#[repr(transparent)]
+pub struct BorrowedMpvNode(libmpv_sys::mpv_node);
 
 #[derive(Debug)]
 enum CowMpvNode<'a> {
     Owned(MpvNode),
-    Borrowed(BorrowedMpvNode<'a>),
+    Borrowed(&'a BorrowedMpvNode),
 }
 
 impl<'a> Deref for CowMpvNode<'a> {
@@ -347,18 +347,22 @@ macro_rules! impl_borrowed {
                     mpv_format::Double => MpvNodeValue::Double(unsafe { node.u.double_ }),
                     mpv_format::String => {
                         let _ = unsafe { mpv_cstr_to_str!(node.u.string) }?;
-                        MpvNodeValue::String(MpvNodeString(CowMpvNode::Borrowed(BorrowedMpvNode(
-                            &self.0,
-                        ))))
+                        MpvNodeValue::String(MpvNodeString(CowMpvNode::Borrowed(unsafe {
+                            core::mem::transmute::<&'a $t, &'a BorrowedMpvNode>(self)
+                        })))
                     }
 
-                    mpv_format::Array => MpvNodeValue::Array(MpvNodeArray(CowMpvNode::Borrowed(
-                        BorrowedMpvNode(&self.0),
-                    ))),
+                    mpv_format::Array => {
+                        MpvNodeValue::Array(MpvNodeArray(CowMpvNode::Borrowed(unsafe {
+                            core::mem::transmute::<&'a $t, &'a BorrowedMpvNode>(self)
+                        })))
+                    }
 
-                    mpv_format::Map => MpvNodeValue::Map(MpvNodeMap(CowMpvNode::Borrowed(
-                        BorrowedMpvNode(&self.0),
-                    ))),
+                    mpv_format::Map => {
+                        MpvNodeValue::Map(MpvNodeMap(CowMpvNode::Borrowed(unsafe {
+                            core::mem::transmute::<&'a $t, &'a BorrowedMpvNode>(self)
+                        })))
+                    }
                     mpv_format::None => MpvNodeValue::None,
                     _ => return Err(Error::Raw(mpv_error::PropertyError)),
                 })
@@ -414,7 +418,7 @@ macro_rules! impl_borrowed {
 }
 
 impl_borrowed!(MpvNode);
-impl_borrowed!(BorrowedMpvNode<'_>);
+impl_borrowed!(BorrowedMpvNode);
 
 unsafe impl GetData for MpvNode {
     fn get_from_c_void<T, F: FnMut(*mut ctype::c_void) -> Result<T>>(
