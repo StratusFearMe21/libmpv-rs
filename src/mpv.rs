@@ -741,6 +741,14 @@ impl Mpv {
         unsafe { libmpv_sys::mpv_get_time_us(self.ctx.as_ptr()) }
     }
 
+    pub fn request_log_messages(&self, level: &str) -> Result<()> {
+        let level = CString::new(level)?;
+
+        mpv_err((), unsafe {
+            libmpv_sys::mpv_request_log_messages(self.ctx.as_ptr(), level.as_ptr())
+        })
+    }
+
     // --- Convenience property functions ---
     //
 
