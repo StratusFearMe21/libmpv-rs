@@ -711,6 +711,25 @@ impl Mpv {
         })
     }
 
+    /// Send a command to the `Mpv` instance asynchronously. This uses `mpv_command_async` internally,
+    /// so that the syntax is the same as described in the [manual for the input.conf](https://mpv.io/manual/master/#list-of-input-commands).
+    ///
+    /// Note that you may have to escape strings with `""` when they contain spaces.
+    pub fn command_async(&self, name: &str, args: &[&str]) -> Result<()> {
+        let name = CString::new(name).unwrap();
+        let mut strings = vec![];
+        let mut cmd = vec![name.as_ptr()];
+
+        for elem in args {
+            let elem = CString::new(elem.to_owned()).unwrap();
+            cmd.push(elem.as_ptr());
+            strings.push(elem);
+        }
+        mpv_err((), unsafe {
+            libmpv_sys::mpv_command_async(self.ctx.as_ptr(), 0, cmd.as_mut_ptr())
+        })
+    }
+
     /// Set the value of a property.
     pub fn set_property<T: SetData>(&self, name: &str, data: T) -> Result<()> {
         let name = CString::new(name)?;
