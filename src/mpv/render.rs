@@ -90,6 +90,27 @@ impl From<u64> for RenderFrameInfoFlag {
     }
 }
 
+#[repr(u32)]
+#[derive(Clone)]
+pub enum RenderFrameUpdateFlag {
+    None = 0,
+    UpdateFrame = libmpv_sys::mpv_render_update_flag_MPV_RENDER_UPDATE_FRAME,
+}
+
+impl From<u64> for RenderFrameUpdateFlag {
+    // mpv_render_frame_update_flag is u32, but mpv_render_frame_update.flags is u64 o\
+    fn from(val: u64) -> Self {
+        let val = val as u32;
+        match val {
+            0 => RenderFrameUpdateFlag::None,
+            libmpv_sys::mpv_render_update_flag_MPV_RENDER_UPDATE_FRAME => {
+                RenderFrameUpdateFlag::UpdateFrame
+            }
+            _ => panic!("Tried converting invalid value to RenderFrameUpdateFlag"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct RenderFrameInfo {
     pub flags: RenderFrameInfoFlag,
@@ -421,8 +442,8 @@ impl RenderContext {
     }
 
     /// Updates the render context and returns flags
-    pub fn update(&self) -> u64 {
-        unsafe { mpv_render_context_update(self.ctx) }
+    pub fn update(&self) -> RenderFrameUpdateFlag {
+        unsafe { mpv_render_context_update(self.ctx).into() }
     }
 
     /// Software render video directly to texture buffer
