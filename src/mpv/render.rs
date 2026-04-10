@@ -19,8 +19,8 @@
 use crate::{mpv::mpv_err, Error, Result};
 use libmpv_sys::{
     self, mpv_handle, mpv_opengl_init_params, mpv_render_context, mpv_render_context_free,
-    mpv_render_context_render, mpv_render_context_set_update_callback, mpv_render_frame_info,
-    mpv_render_param,
+    mpv_render_context_render, mpv_render_context_set_update_callback, mpv_render_context_update,
+    mpv_render_frame_info, mpv_render_param,
 };
 use std::collections::HashMap;
 use std::convert::From;
@@ -418,6 +418,11 @@ impl RenderContext {
         }
 
         ret
+    }
+
+    /// Updates the render context and returns flags
+    pub fn update(&self) -> u64 {
+        unsafe { mpv_render_context_update(self.ctx) }
     }
 
     /// Software render video directly to texture buffer
